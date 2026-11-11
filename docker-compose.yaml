@@ -1,0 +1,99 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# Single-replica NereidSphere OIDC development environment. The identity
+# provider and integrated products are independently deployed. Copy
+# .env.example to .env and replace every placeholder before use.
+services:
+  nereidsphere:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+    image: ${NS_IMAGE:-nereidsphere:0.0.0-dev-compose}
+    ports:
+      - "${NS_PORT:-8081}:8081"
+    configs:
+      - source: nereidsphere_config
+        target: /etc/nereidsphere/config.yaml
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      # /healthz checks the NS process. /readyz additionally checks the
+      # independently deployed identity provider and is verified separately.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+configs:
+  nereidsphere_config:
+    # Compose expands .env values into this mounted YAML. Avoid sharing the
+    # output of `docker compose config` when real credentials are configured.
+    content: |
+      server:
+        listen: ":8081"
+        base_url: "${NS_BASE_URL:?Set NS_BASE_URL in .env}"
+        env: "dev"
+
+      auth:
+        mode: "oidc"
+
+      oidc:
+        issuer: "${NS_OIDC_ISSUER:?Set NS_OIDC_ISSUER in .env}"
+        client_id: "${NS_OIDC_CLIENT_ID:-nereidsphere}"
+        client_secret: "${NS_OIDC_CLIENT_SECRET:?Set NS_OIDC_CLIENT_SECRET in .env}"
+        admin_client_id: "${NS_OIDC_ADMIN_CLIENT_ID:-nereidsphere-admin}"
+        admin_client_secret: "${NS_OIDC_ADMIN_CLIENT_SECRET:?Set NS_OIDC_ADMIN_CLIENT_SECRET in .env}"
+        scopes: ["openid", "profile", "email"]
+
+      session:
+        secret_key: "${NS_SESSION_SECRET_KEY:?Set NS_SESSION_SECRET_KEY in .env}"
+        cookie_name: "ns_session"
+        idle_ttl: "8h"
+        absolute_ttl: "24h"
+        secure: ${NS_SESSION_SECURE:-false}
+
+      tickets:
+        replay_store: "memory"
+
+      gateway:
+        cors_allowed_origins: []
+        requests_per_minute: 300
+        burst: 60
+        login_requests_per_minute: 30
+        login_burst: 10
+        upstream_timeout: "30s"
+
+      products:
+        - id: "forge"
+          name: "NereidForge"
+          description: "Model factory — train, optimize and export models across silicon"
+          url: "${NS_FORGE_URL:?Set NS_FORGE_URL in .env}"
+          mode: "ns"
+          oidc_client_id: "nereidforge"
+          oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+          tenants_path: "/v1/integration/ns/tenants"
+          sso_secret: "${NS_FORGE_SSO_SECRET:?Set NS_FORGE_SSO_SECRET in .env}"
+        - id: "horizon"
+          name: "NereidHorizon"
+          description: "Edge distribution — edge deployment, model rollout, delivery and OTA"
+          url: "${NS_HORIZON_URL:?Set NS_HORIZON_URL in .env}"
+          mode: "ns"
+          oidc_client_id: "nereidhorizon"
+          oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+          tenants_path: "/v1/integration/ns/tenants"
+          sso_secret: "${NS_HORIZON_SSO_SECRET:?Set NS_HORIZON_SSO_SECRET in .env}"
+        - id: "link"
+          name: "NereidLink"
+          description: "IoT platform — device access, messaging, rules and alerts"
+          url: "${NS_LINK_URL:?Set NS_LINK_URL in .env}"
+          mode: "ns"
+          oidc_client_id: "nereidlink"
+          oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+          tenants_path: "/v1/integration/ns/tenants"
+          sso_secret: "${NS_LINK_SSO_SECRET:?Set NS_LINK_SSO_SECRET in .env}"

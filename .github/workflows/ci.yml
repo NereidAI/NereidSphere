@@ -1,0 +1,98 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# The pull-request and main-branch gate uses only the repository's Makefile
+# targets and requires no secrets, so forks receive the same verification.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify source and deployment artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.18.3
+
+      - name: Install golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+          echo "$(go env GOPATH)/bin" >> "${GITHUB_PATH}"
+
+      - name: Resolve chart dependencies
+        run: make helm-dep
+
+      - name: Run the verification gate
+        run: make verify
+
+  # image builds both release architectures into the shared GitHub Actions
+  # buildx cache. Nothing is loaded or pushed; the tag-triggered
+  # release workflow reuses these layers. build-push-action is required because
+  # the gha cache backend relies on the Actions runtime integration.
+  image:
+    name: Warm multi-arch image build cache
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build into the shared GHA cache (no push, no load)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: build/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          # Same dev-channel build argument as publish-dev.yml, so the cache
+          # keys line up; release runs inject bare SemVer via the tag workflow.
+          build-args: |
+            VERSION=0.0.0-dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false

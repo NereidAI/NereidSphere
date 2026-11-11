@@ -1,0 +1,44 @@
+NereidSphere
+Copyright 2026 YIQISOFT
+
+This product includes software developed by YIQISOFT.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this product except in compliance with the License. You may obtain a copy of
+the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Third-Party Attributions
+
+Swagger UI
+Copyright 2020-2021 SmartBear Software Inc.
+The vendored Swagger UI assets are distributed under Apache License 2.0; the
+upstream LICENSE is preserved in docs/api/swaggerui/LICENSE.
+
+CoreOS Project
+Copyright 2014 CoreOS, Inc.
+This product includes software developed at CoreOS, Inc. through go-oidc.
+
+gopkg.in/yaml.v3
+Copyright 2011-2016 Canonical Ltd.
+Portions ported from libyaml are Copyright (c) 2006-2011 Kirill Simonov.
+This component is covered by MIT and Apache License 2.0 terms as documented
+in its upstream LICENSE.
+
+Go components
+Copyright (c) 2009 The Go Authors. All rights reserved.
+golang.org/x/crypto and golang.org/x/oauth2 are distributed under the BSD
+3-Clause License. The go-jose json package and spf13/pflag retain their own
+Go Authors and Alex Ogier copyright notices under the same license family.
+
+Web portal components
+NereidSphere uses React, Ant Design, axios, i18next, Vite, TypeScript, and
+other packages under MIT, ISC, Apache-2.0, BSD-3-Clause, and CC-BY-4.0.
+caniuse-lite is by Ben Briggs with browser support data from caniuse.com
+contributors, licensed under Creative Commons Attribution 4.0 International.
+
+See THIRD_PARTY_NOTICES for the dependency audit scope, component groups,
+license identifications, and upstream references. Third-party software and
+data remain subject to their respective licenses. Their inclusion does not
+imply endorsement of NereidSphere or YIQISOFT.

@@ -1,0 +1,46 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "nereidsphere.fullname" . }}
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if .Values.valkey.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "nereidsphere.fullname" . }}-valkey-data
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "nereidsphere.fullname" . }}-valkey-sentinel
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey-sentinel
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey-sentinel
+{{- end }}

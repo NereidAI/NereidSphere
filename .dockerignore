@@ -1,0 +1,23 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# VCS / tooling
+.git
+.gitignore
+
+# Local build artifacts (rebuilt inside the image by `make build`)
+bin/
+web/dist/
+web/node_modules/
+web/.vite/
+
+# Local config / scratch
+.env
+*.local
+.tmp/
+tmp/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,1038 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+openapi: 3.0.3
+info:
+  title: NereidSphere API
+  version: 0.0.1
+  description: >-
+    NereidSphere is the thin suite layer: the single OIDC relying party
+    facing NereidIdentity, the cross-product SSO ticket hub, the unified
+    gateway and the suite portal.
+
+
+    ## Authentication models
+
+
+    * **Browser session** — after the authorization-code + PKCE login (or an
+    emergency local login), the browser holds the sealed, HttpOnly
+    `ns_session` cookie. Browser-driven state-changing requests additionally
+    carry the double-submit `X-Csrf-Token` header matching the `ns_csrf`
+    cookie.
+
+
+    * **Server-to-server ticket exchange** — mode-ns product backends present
+    `X-NS-Client-Id` and `X-NS-Client-Secret` and exchange a one-time
+    handoff ticket.
+
+
+    Upstream identity tokens are never exposed to browser JavaScript.
+  contact:
+    name: YIQISOFT
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: /
+    description: Same-origin deployment
+
+tags:
+  - name: auth
+    description: Browser login/logout flows and session endpoints
+  - name: sso
+    description: Cross-product single sign-on ticket hub
+  - name: portal
+    description: Product catalogue
+  - name: admin
+    description: Identity administration console (oidc mode only)
+  - name: health
+    description: Liveness and readiness probes
+  - name: gateway
+    description: Unified reverse proxy into suite products
+
+security:
+  - cookieAuth: []
+    csrfToken: []
+
+paths:
+  /auth/login:
+    get:
+      tags: [auth]
+      summary: Start the suite login
+      description: >-
+        Suite SSO entry. In `oidc` mode an authenticated visitor is
+        redirected straight to `redirect`; otherwise a sealed PKCE handshake
+        cookie is set and the browser is redirected (302) to the
+        NereidIdentity authorization endpoint. In `local` mode the browser is
+        redirected to the SPA `/login` emergency form.
+      operationId: startLogin
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Redirect'
+      responses:
+        '302':
+          description: Redirect to the identity service, the SPA login or the destination
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        '400':
+          description: Redirect target failed the allowlist check
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/callback:
+    get:
+      tags: [auth]
+      summary: OIDC authorization-code callback
+      description: >-
+        Browser return from NereidIdentity. Validates the sealed `state`
+        cookie, exchanges the code with the S256 PKCE verifier, verifies the
+        id token (issuer, audience, expiry, nonce, JWKS signature),
+        establishes the sealed session cookie and redirects to the original
+        destination. Failures redirect to `/login?error=...`.
+      operationId: authCallback
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: error
+          in: query
+          schema: { type: string }
+        - name: error_description
+          in: query
+          schema: { type: string }
+      responses:
+        '302':
+          description: Post-login redirect (or `/login?error=sso_*` on failure)
+          headers:
+            Location:
+              schema: { type: string }
+            Set-Cookie:
+              schema: { type: string }
+
+  /auth/logout:
+    get:
+      tags: [auth]
+      summary: Browser-followable logout
+      description: >-
+        Clears the NS session/CSRF cookies, best-effort revokes the upstream
+        refresh token and continues to RP-initiated logout at the identity
+        service, returning the browser to the NS portal. In local mode it
+        redirects to `/`.
+      operationId: logoutBrowser
+      responses:
+        '302':
+          description: Redirect to the identity end-session endpoint or `/`
+          headers:
+            Location:
+              schema: { type: string }
+
+  /auth/enter/{product}:
+    get:
+      tags: [sso]
+      summary: Enter a suite product with single sign-on
+      description: >-
+        Mode `ns`: mints a 30-second, single-use, audience-bound sealed
+        ticket and redirects (302) to the product callback
+        (`<product-url>/auth/ns-callback?ticket=...&to=...`). Mode `oidc`:
+        redirects straight to the product, which runs its own OIDC flow
+        against NereidIdentity. Unauthenticated visitors are redirected to
+        `/auth/login?redirect=...`.
+      operationId: enterProduct
+      parameters:
+        - name: product
+          in: path
+          required: true
+          schema: { type: string, example: link }
+        - name: to
+          in: query
+          description: Relative deep-link path inside the product (never an absolute URL)
+          schema: { type: string, example: /dashboard }
+      responses:
+        '302':
+          description: Redirect to the product callback/login
+          headers:
+            Location:
+              schema: { type: string }
+        '400':
+          description: Invalid `to` path
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Unknown product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/method:
+    get:
+      tags: [auth]
+      summary: Discover the configured login mode
+      security: []
+      operationId: getAuthMethod
+      responses:
+        '200':
+          description: Login backend the SPA should render
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthMethod' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Emergency local-account login
+      description: >-
+        Only available when `auth.mode=local`. In `oidc` mode this endpoint
+        answers 404; the browser must use `/auth/login` (authorization-code +
+        PKCE) instead.
+      operationId: localLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Session established; `ns_session` cookie is set
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          description: Malformed request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Local login disabled (oidc mode)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: XHR logout
+      description: Revokes the upstream refresh token best effort and clears the NS cookies.
+      operationId: logout
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+        '403':
+          $ref: '#/components/responses/CSRFError'
+
+  /api/v1/me:
+    get:
+      tags: [auth]
+      summary: Current authenticated identity
+      description: Transparently refreshes and slides the sealed session when needed.
+      operationId: getMe
+      responses:
+        '200':
+          description: Identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Identity' }
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/verify:
+    get:
+      tags: [auth]
+      summary: Forward-auth decision endpoint
+      description: >-
+        Used by ingress-nginx `auth_request` / Traefik `forwardAuth`. A valid
+        session yields 204 and identity headers (`X-User-Id`,
+        `X-User-Email`, `X-User-Name`, `X-User-Roles`) the ingress
+        propagates upstream; otherwise 401.
+      operationId: verifySession
+      responses:
+        '204':
+          description: Authenticated; identity headers are set
+          headers:
+            X-User-Id:
+              schema: { type: string }
+            X-User-Email:
+              schema: { type: string }
+            X-User-Name:
+              schema: { type: string }
+            X-User-Roles:
+              schema: { type: string, description: Comma-joined suite roles }
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/auth/ticket/verify:
+    post:
+      tags: [sso]
+      summary: Exchange a handoff ticket (server to server)
+      description: >-
+        Called by a mode-1 product backend immediately after the browser
+        handoff. The product authenticates with its per-product shared
+        secret; the ticket is single-use, audience-bound and valid for 30
+        seconds. This endpoint is exempt from CSRF enforcement.
+      operationId: verifyTicket
+      security:
+        - productAuth: []
+      parameters:
+        - name: X-NS-Client-Id
+          in: header
+          required: true
+          schema: { type: string, example: link }
+        - name: X-NS-Client-Secret
+          in: header
+          required: true
+          schema: { type: string, format: password }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketVerifyRequest' }
+      responses:
+        '200':
+          description: Verified identity snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketVerifyResponse' }
+        '400':
+          description: Missing/invalid/expired ticket or audience mismatch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Invalid product credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Shared ticket replay store unavailable; the exchange is refused fail-closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/products:
+    get:
+      tags: [portal]
+      summary: Suite product catalogue
+      description: Central-suite catalogue in closed-loop order (Forge, Horizon, Link). NereidEdge is deployed per edge site and is intentionally absent.
+      operationId: listProducts
+      responses:
+        '200':
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+
+  /api/v1/admin/status:
+    get:
+      tags: [admin]
+      summary: Identity connection and product topology status
+      description: Any authenticated session may read; product modes reflect deployment config.
+      operationId: adminStatus
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConnectionStatus' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/admin/users:
+    get:
+      tags: [admin]
+      summary: List suite accounts
+      description: Requires the `admin` or `operator` suite role and returns one server-side page.
+      operationId: listAdminUsers
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 128 }
+        - name: first
+          in: query
+          schema: { type: integer, default: 0, minimum: 0 }
+        - name: max
+          in: query
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+      responses:
+        '200':
+          description: Account page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserPage' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AdminDisabled'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+    post:
+      tags: [admin]
+      summary: Create a local suite account
+      description: >-
+        Requires the `admin` suite role and uses the `nereidsphere-admin`
+        service account. Role and password setup failures remove the partially
+        created account.
+      operationId: createAdminUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AdminDisabled'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /api/v1/admin/users/{id}:
+    get:
+      tags: [admin]
+      summary: Get one account
+      operationId: getAdminUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+    put:
+      tags: [admin]
+      summary: Update profile fields of a local account
+      operationId: updateAdminUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '204':
+          description: Updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/FederatedReadOnly'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+    delete:
+      tags: [admin]
+      summary: Permanently delete a local account
+      description: Disabling is preferred for historical users. Self-deletion and deleting the last enabled admin are refused.
+      operationId: deleteAdminUser
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AdminSafetyConflict'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /api/v1/admin/users/{id}/enabled:
+    post:
+      tags: [admin]
+      summary: Enable or disable a local account
+      operationId: setAdminUserEnabled
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '204':
+          description: Updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AdminSafetyConflict'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /api/v1/admin/users/{id}/reset-password:
+    post:
+      tags: [admin]
+      summary: Reset a local account password
+      operationId: resetAdminUserPassword
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, temporary]
+              properties:
+                password: { type: string, minLength: 8, maxLength: 256, format: password }
+                temporary: { type: boolean, default: true, description: Require a password change on next sign-in }
+      responses:
+        '204':
+          description: Password reset
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/FederatedReadOnly'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /api/v1/admin/users/{id}/roles:
+    put:
+      tags: [admin]
+      summary: Replace suite role assignments
+      description: Only `user`, `operator` and `admin` are managed; other realm roles remain untouched.
+      operationId: setAdminUserRoles
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roles]
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [user, operator, admin]
+      responses:
+        '204':
+          description: Roles updated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AdminSafetyConflict'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /api/v1/admin/product-catalog:
+    get:
+      tags: [admin]
+      summary: List products that support tenant/role assignment
+      description: >-
+        Requires the `admin` or `operator` suite role and OIDC mode with the
+        admin service account. Describes each product's selectable role keys
+        and the product-relative tenant list path the console fetches through
+        the gateway.
+      operationId: adminProductCatalog
+      responses:
+        '200':
+          description: Product role catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductCatalogResponse' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AdminDisabled'
+
+  /api/v1/admin/users/{id}/product-roles:
+    get:
+      tags: [admin]
+      summary: Get a user's product tenant/role assignments
+      description: >-
+        Requires the `admin` or `operator` suite role. Reads the user's
+        identity-service groups and returns those following
+        `/nereid{product}/{tenant}/{role}`.
+      operationId: getAdminUserProductRoles
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Current assignments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductRolesRequest' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AdminDisabled'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+    put:
+      tags: [admin]
+      summary: Replace a user's product tenant/role assignments
+      description: >-
+        Requires the `admin` suite role. Reconciles the user's suite groups
+        with the supplied assignments: only differing groups are added or
+        removed. Unknown products or roles are rejected.
+      operationId: setAdminUserProductRoles
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductRolesRequest' }
+      responses:
+        '200':
+          description: Updated assignments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductRolesRequest' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/AdminDisabled'
+        '409':
+          $ref: '#/components/responses/FederatedReadOnly'
+        '502':
+          $ref: '#/components/responses/IdentityError'
+
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      security: []
+      operationId: healthz
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Requires the ticket replay store and, in oidc mode, identity discovery.
+      security: []
+      operationId: readyz
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  auth: { type: string, enum: [local, oidc] }
+                  replay: { type: string, enum: [memory, valkey] }
+        '503':
+          description: Ticket replay store or identity service unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /p/{product}/{path}:
+    get:
+      tags: [gateway]
+      summary: Reverse-proxy gateway into a product
+      description: >-
+        Any method is proxied. Requires a valid session; the gateway injects
+        verified `X-User-*` identity headers after stripping inbound spoofed
+        headers and enforces CORS, rate limits and timeouts.
+      operationId: gatewayProxy
+      parameters:
+        - name: product
+          in: path
+          required: true
+          schema: { type: string }
+        - name: path
+          in: path
+          required: true
+          allowEmptyValue: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Proxied product response
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Unknown product
+        '502':
+          description: Upstream product error
+
+components:
+  parameters:
+    Redirect:
+      name: redirect
+      in: query
+      description: >-
+        Post-login destination. Must be a relative NS path or an exact
+        configured product origin; everything else is rejected (no open
+        redirect).
+      schema: { type: string }
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: ns_session
+      description: Sealed, HttpOnly SameSite session cookie established at login.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-Csrf-Token
+      description: Double-submit token; must equal the ns_csrf cookie on mutating browser requests.
+    productAuth:
+      type: apiKey
+      in: header
+      name: X-NS-Client-Id
+      description: Product client id, paired with X-NS-Client-Secret.
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Insufficient suite role or CSRF failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Username or email already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    AdminDisabled:
+      description: Administration disabled in local emergency mode
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    FederatedReadOnly:
+      description: External/federated accounts are read-only
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    AdminSafetyConflict:
+      description: Federated read-only, self-action, or last-admin protection
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    IdentityError:
+      description: Identity service unavailable or returned an error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    CSRFError:
+      description: Missing/invalid double-submit CSRF token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: UNAUTHORIZED }
+            message: { type: string }
+            trace_id: { type: string }
+
+    Identity:
+      type: object
+      properties:
+        sub: { type: string, example: 9f3c1e7a-... }
+        email: { type: string, format: email }
+        name: { type: string }
+        preferred_username: { type: string, example: alice }
+        roles:
+          type: array
+          items: { type: string, enum: [user, operator, admin] }
+        groups:
+          type: array
+          items: { type: string }
+          description: Realm groups for product tenant mapping (e.g., /nereidlink/tenant-foo/admins)
+
+    AuthMethod:
+      type: object
+      properties:
+        mode: { type: string, enum: [local, oidc] }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string, example: link }
+        name: { type: string, example: NereidLink }
+        description: { type: string }
+        url: { type: string, format: uri }
+        mode: { type: string, enum: [ns, oidc] }
+        launch_url: { type: string, example: /auth/enter/link }
+        assigned:
+          type: boolean
+          description: >-
+            True when the current session holds at least one
+            /nereid{product}/{tenant}/{role} assignment group, or the realm
+            admin role (implicit suite-wide administrator). Unassigned,
+            non-admin products are rendered disabled; /auth/enter enforces
+            the same default-deny for hand-typed URLs. False for anonymous
+            callers and for operator-only sessions.
+          example: true
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        redirect: { type: string }
+
+    LoginResponse:
+      type: object
+      properties:
+        identity: { $ref: '#/components/schemas/Identity' }
+        redirect: { type: string }
+
+    TicketVerifyRequest:
+      type: object
+      required: [ticket]
+      properties:
+        ticket: { type: string, description: Sealed AEAD ticket string from the handoff redirect }
+
+    TicketVerifyResponse:
+      type: object
+      properties:
+        identity: { $ref: '#/components/schemas/Identity' }
+        to: { type: string, example: /dashboard }
+
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        email: { type: string, format: email }
+        first_name: { type: string }
+        last_name: { type: string }
+        enabled: { type: boolean }
+        email_verified: { type: boolean }
+        federated: { type: boolean, description: True for brokered/external accounts (read-only) }
+        federation_provider: { type: string, example: entra }
+        required_actions:
+          type: array
+          items: { type: string, example: UPDATE_PASSWORD }
+        roles:
+          type: array
+          items: { type: string, enum: [user, operator, admin] }
+        created_at: { type: integer, format: int64, description: Epoch milliseconds from the identity service }
+
+    AdminUserPage:
+      type: object
+      required: [users, total, first, max]
+      properties:
+        users:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUser' }
+        total: { type: integer }
+        first: { type: integer }
+        max: { type: integer }
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, temporary]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 128 }
+        email: { type: string, format: email, maxLength: 255 }
+        first_name: { type: string, maxLength: 128 }
+        last_name: { type: string, maxLength: 128 }
+        password: { type: string, format: password, minLength: 8, maxLength: 256 }
+        temporary: { type: boolean, default: true, description: Require a password change on next sign-in }
+        roles:
+          type: array
+          items: { type: string, enum: [user, operator, admin] }
+        product_roles:
+          $ref: '#/components/schemas/ProductRolesRequest/properties/assignments'
+
+    UpdateUserRequest:
+      type: object
+      description: All fields optional; only provided fields are changed.
+      properties:
+        email: { type: string, format: email }
+        first_name: { type: string }
+        last_name: { type: string }
+
+    ProductRoleAssignment:
+      type: object
+      required: [tenant_id, role]
+      properties:
+        tenant_id: { type: string, description: Product-owned tenant/org identifier }
+        role: { type: string, description: Product role key, e.g. admins, engineers, read_only }
+
+    ProductRolesRequest:
+      type: object
+      properties:
+        assignments:
+          type: object
+          description: Product id -> list of tenant/role pairs.
+          additionalProperties:
+            type: array
+            items: { $ref: '#/components/schemas/ProductRoleAssignment' }
+          example:
+            link:
+              - tenant_id: tenant-a
+                role: admins
+            forge:
+              - tenant_id: tenant-a
+                role: operator
+
+    ProductCatalogEntry:
+      type: object
+      properties:
+        id: { type: string, example: link }
+        name: { type: string, example: NereidLink }
+        roles:
+          type: array
+          items: { type: string }
+          description: Selectable role keys for this product.
+        tenants_path:
+          type: string
+          description: Product-relative tenant list path fetched through the gateway, if any.
+
+    ProductCatalogResponse:
+      type: object
+      properties:
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/ProductCatalogEntry' }
+
+    ConnectionStatus:
+      type: object
+      properties:
+        mode: { type: string, enum: [local, oidc] }
+        issuer: { type: string, format: uri }
+        issuer_ready: { type: boolean }
+        admin_api: { type: boolean }
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              mode: { type: string, enum: [ns, oidc] }

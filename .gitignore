@@ -1,0 +1,30 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# Go
+/bin/
+*.out
+coverage.html
+
+# Packaged Helm charts
+dist/
+
+# Frontend dependencies and build output
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+
+# Local npm mirror override
+.npmrc
+
+# Local environment / secrets
+.env
+.env.local
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local build acceleration fragment; use local.mk.example
+/local.mk
