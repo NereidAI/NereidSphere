@@ -1,0 +1,61 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# Tag-only image publication. All release mechanics live in the
+# organization reusable workflow: SemVer tag validation, bare VERSION
+# derivation (tag v0.0.1 -> VERSION 0.0.1), amd64+arm64 index, three-tag
+# scheme (no latest) and GHCR login. The repository has no VERSION file and
+# no push target; the git tag is the single version source. The GitHub
+# Release entry is created by a separate job with job-level contents: write.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    name: Derive image build metadata
+    runs-on: ubuntu-latest
+    outputs:
+      build_date: ${{ steps.meta.outputs.build_date }}
+    steps:
+      - id: meta
+        run: echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  release-image:
+    name: Build and publish the GHCR image
+    needs: prep
+    uses: NereidAI/.github/.github/workflows/release-image.yml@v1
+    with:
+      image-name: nereidsphere
+      file: build/Dockerfile
+      build-args: |
+        GIT_SHA=${{ github.sha }}
+        BUILD_DATE=${{ needs.prep.outputs.build_date }}
+
+  github-release:
+    name: Ensure GitHub Release exists
+    needs: release-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "GitHub Release ${GITHUB_REF_NAME} already exists; leaving it unchanged"
+          else
+            gh release create "${GITHUB_REF_NAME}" --generate-notes
+          fi

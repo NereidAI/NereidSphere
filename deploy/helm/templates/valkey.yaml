@@ -1,0 +1,295 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.valkey.enabled }}
+{{- $fullName := include "nereidsphere.fullname" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-valkey-primary
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: primary
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "nereidsphere.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: primary
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-valkey-replica
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: replica
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "nereidsphere.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: replica
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-valkey-sentinel
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey-sentinel
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "nereidsphere.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey-sentinel
+  ports:
+    - name: sentinel
+      port: 26379
+      targetPort: 26379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullName }}-valkey-primary
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: primary
+spec:
+  serviceName: {{ $fullName }}-valkey-primary
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey
+      app.kubernetes.io/valkey-role: primary
+  template:
+    metadata:
+      labels:
+        {{- include "nereidsphere.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: valkey
+        app.kubernetes.io/valkey-role: primary
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: valkey
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              exec valkey-server \
+                --port 6379 \
+                --protected-mode no \
+                --save "" \
+                --appendonly no \
+                --requirepass "$VALKEY_PASSWORD" \
+                --masterauth "$VALKEY_PASSWORD"
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nereidsphere.valkeySecretName" . }}
+                  key: password
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-warning INFO replication | grep "role:master"']
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-warning ping | grep PONG']
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "nereidsphere.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullName }}-valkey-replica
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+    app.kubernetes.io/valkey-role: replica
+spec:
+  serviceName: {{ $fullName }}-valkey-replica
+  replicas: {{ int .Values.valkey.dataReplicas }}
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey
+      app.kubernetes.io/valkey-role: replica
+  template:
+    metadata:
+      labels:
+        {{- include "nereidsphere.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: valkey
+        app.kubernetes.io/valkey-role: replica
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: valkey
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              exec valkey-server \
+                --port 6379 \
+                --protected-mode no \
+                --save "" \
+                --appendonly no \
+                --replicaof {{ $fullName }}-valkey-primary-0.{{ $fullName }}-valkey-primary 6379 \
+                --requirepass "$VALKEY_PASSWORD" \
+                --masterauth "$VALKEY_PASSWORD"
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nereidsphere.valkeySecretName" . }}
+                  key: password
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-warning INFO replication | grep "master_link_status:up"']
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", 'valkey-cli -a "$VALKEY_PASSWORD" --no-auth-warning ping | grep PONG']
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "nereidsphere.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullName }}-valkey-sentinel
+  labels:
+    {{- include "nereidsphere.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey-sentinel
+spec:
+  serviceName: {{ $fullName }}-valkey-sentinel
+  replicas: {{ int .Values.valkey.sentinelReplicas }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "nereidsphere.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey-sentinel
+  template:
+    metadata:
+      labels:
+        {{- include "nereidsphere.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: valkey-sentinel
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: sentinel
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              : > /tmp/sentinel.conf
+              exec valkey-sentinel /tmp/sentinel.conf \
+                --port 26379 \
+                --dir /tmp \
+                --protected-mode no \
+                --sentinel resolve-hostnames yes \
+                --sentinel monitor {{ .Values.valkey.masterName }} {{ $fullName }}-valkey-primary-0.{{ $fullName }}-valkey-primary 6379 2 \
+                --sentinel auth-pass {{ .Values.valkey.masterName }} "$VALKEY_PASSWORD" \
+                --sentinel down-after-milliseconds {{ .Values.valkey.masterName }} 5000 \
+                --sentinel failover-timeout {{ .Values.valkey.masterName }} 15000 \
+                --sentinel parallel-syncs {{ .Values.valkey.masterName }} 1
+          env:
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nereidsphere.valkeySecretName" . }}
+                  key: password
+          ports:
+            - name: sentinel
+              containerPort: 26379
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "valkey-cli -p 26379 SENTINEL CKQUORUM {{ .Values.valkey.masterName }} | grep '^OK'"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "valkey-cli -p 26379 ping | grep PONG"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "nereidsphere.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: valkey-sentinel
+{{- end }}

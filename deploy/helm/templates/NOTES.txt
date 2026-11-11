@@ -1,0 +1,19 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+NereidSphere {{ .Chart.AppVersion }} has been deployed.
+
+  Application:  http{{ if .Values.ingress.tls }}s{{ end }}://{{ index .Values.ingress.hosts 0 "host" }}
+  Service:      {{ include "nereidsphere.fullname" . }}:{{ .Values.service.port }}
+  Health:       /healthz (liveness), /readyz (readiness)
+
+The runtime configuration is mounted from Secret
+"{{ include "nereidsphere.configSecretName" . }}" (key: config.yaml).
+Replace every placeholder secret before going to production, or supply your
+own via config.existingSecret. Login is selected by config.auth.mode:
+"oidc" (the default) delegates the browser login to the external,
+independently deployed NereidIdentity via authorization-code + PKCE
+(config.oidc.issuer/clientId/clientSecret plus the admin service-account
+client), while "local" is an emergency break-glass mode using bcrypt-hashed
+config.auth.localUsers accounts. Ensure <baseUrl>/auth/callback is
+registered as a redirect URI in the NereidIdentity realm.

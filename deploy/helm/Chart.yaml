@@ -1,0 +1,12 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: nereidsphere
+description: NereidSphere - Thin suite layer (SSO, portal, API gateway, event glue)
+type: application
+# Chart package version is bumped independently at release packaging time.
+# appVersion is the rolling-dev placeholder on the branch; a tag release
+# injects the bare SemVer (0.0.1) via `helm package --app-version`.
+version: 0.0.1
+appVersion: "0.0.0-dev"

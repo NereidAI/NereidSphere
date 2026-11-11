@@ -1,0 +1,104 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# NereidSphere development configuration.
+# Selected with: go run ./cmd/sphere serve -c configs/dev.yaml
+#
+# Authentication is selected by auth.mode:
+#   local — emergency bcrypt accounts below; `make dev` needs no external
+#           dependency (this file's default).
+#   oidc  — authorization-code + PKCE against an independently deployed
+#           NereidIdentity or compatible Keycloak service. The browser is
+#           redirected to the identity service login page; NS never collects
+#           the password. See docs/oidc-integration.md for client setup.
+#
+# Register these exact redirect URIs with the development OIDC client:
+#   http://localhost:8081/auth/callback (embedded portal)
+#   http://localhost:5174/auth/callback (Vite dev server)
+
+server:
+  # Binds all interfaces. The public origin defaults to localhost for a
+  # portable checkout. Register this exact origin with the OIDC client and
+  # override base_url in a local config when using another reachable origin.
+  listen: ":8081"
+  base_url: "http://localhost:8081"
+  env: "dev"
+
+auth:
+  # Switch to "oidc" to use NereidIdentity. The local accounts below are an
+  # emergency break-glass path and are ignored in oidc mode.
+  mode: "local"
+  # Local emergency accounts (bcrypt hashes, dev only). Generate a hash with
+  # htpasswd -bnBC 10 "" password | tr -d ':\n'
+  local_users:
+    - username: "admin"
+      name: "Admin User"
+      email: "admin@nereidai.local"
+      password_bcrypt: "$2a$10$exEAXUhCDksllP4grplAU.Tfg/pJAdLwnvFAIS60pe09U4jGuIwwW"
+      roles: ["admin", "user"]
+    - username: "user"
+      name: "Normal User"
+      email: "user@nereidai.local"
+      password_bcrypt: "$2a$10$Q/24sGimJiBnWgdHja7SN.jf8WbH82YLyoAPdcIRbzZj0lF4w5ZDe"
+      roles: ["user"]
+
+oidc:
+  # Used only when auth.mode=oidc. Pure consumer connection block: NS is a
+  # relying party and an Admin REST service-account client; it never calls an
+  # IdP-specific management API.
+  issuer: "http://localhost:8090/realms/nereidai"
+  client_id: "nereidsphere"
+  client_secret: "changeme"
+  admin_client_id: "nereidsphere-admin"
+  admin_client_secret: "changeme-admin"
+  scopes: ["openid", "profile", "email"]
+
+session:
+  # 32-byte (AES-256) development key. Override via file in every real deploy.
+  secret_key: "dev-insecure-32byte-secret-key!!"
+  cookie_name: "ns_session"
+  idle_ttl: "8h"       # inactivity limit
+  absolute_ttl: "24h"  # hard cap regardless of activity
+  secure: false
+
+gateway:
+  # Empty allowlist defaults to the server origin plus every product origin.
+  cors_allowed_origins: []
+  requests_per_minute: 300
+  burst: 60
+  login_requests_per_minute: 30
+  login_burst: 10
+  upstream_timeout: "30s"
+
+# Reserved example.com product origins are placeholders for a portable
+# checkout. Replace them with reachable product origins for SSO/gateway tests.
+# Central-suite products shown on the portal home page, in closed-loop
+# pipeline order: NereidForge trains/optimizes models -> NereidHorizon
+# distributes them to the edge -> NereidLink is the device platform closing
+# the loop (listed last). NereidEdge is deployed independently at every edge
+# site and is intentionally absent from the central portal.
+products:
+  - id: "forge"
+    name: "NereidForge"
+    description: "Model factory — train, optimize and export models across silicon"
+    url: "https://nereidforge.example.com"
+    mode: "ns"
+    oidc_client_id: "nereidforge"
+    oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+    tenants_path: "/v1/integration/ns/tenants"
+  - id: "horizon"
+    name: "NereidHorizon"
+    description: "Edge distribution — edge deployment, model rollout, delivery and OTA"
+    url: "https://nereidhorizon.example.com"
+    mode: "ns"
+    oidc_client_id: "nereidhorizon"
+    oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+    tenants_path: "/v1/integration/ns/tenants"
+  - id: "link"
+    name: "NereidLink"
+    description: "IoT platform — device access, messaging, rules and alerts"
+    url: "https://nereidlink.example.com"
+    mode: "ns"
+    oidc_client_id: "nereidlink"
+    oidc_redirect_paths: ["/auth/callback", "/oidc/callback"]
+    tenants_path: "/v1/integration/ns/tenants"

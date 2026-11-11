@@ -1,0 +1,184 @@
+# Copyright (C) 2026 YIQISOFT
+# SPDX-License-Identifier: Apache-2.0
+
+# Default values for nereidsphere.
+# Image and chart versions follow the tag-sourced model: branch
+# builds use the rolling 0.0.0-dev channel, tag releases use bare SemVer.
+# Replace every placeholder secret/origin before a real deployment.
+
+replicaCount: 2
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+image:
+  repository: ghcr.io/nereidai/nereidsphere
+  pullPolicy: Always
+  # Empty defaults to Chart appVersion: 0.0.0-dev on the branch, bare SemVer
+  # (0.0.1) when packaged from a v* tag checkout.
+  tag: ""
+
+# Optional existing registry pull secrets; public images need none.
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8081
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nereidsphere.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: "1"
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Shared Valkey store for ticket JTI single-use enforcement across NS
+# replicas. Built-in mode deploys one primary, one replica and three
+# Sentinels. Tickets live 30 seconds only; persistence is intentionally off.
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: "8.0-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    # Provide a strong password or an existing Secret with key password.
+    password: ""
+    existingSecret: ""
+  masterName: nereidsphere-valkey
+  dataReplicas: 1
+  sentinelReplicas: 3
+  resources:
+    limits:
+      cpu: "500m"
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+  # External Valkey is used only when enabled=false and tickets.replayStore
+  # is explicitly "valkey".
+  external:
+    address: ""
+    sentinelMasterName: ""
+    sentinelAddresses: []
+    password: ""
+    sentinelPassword: ""
+
+tickets:
+  # Default follows valkey.enabled; use memory only for single-replica/dev.
+  replayStore: ""
+  dialTimeout: 2s
+  operationTimeout: 1s
+
+# Runtime configuration rendered into Secret config.yaml and mounted at
+# /app/config/config.yaml. Provide your own secret with config.existingSecret
+# (key: config.yaml) to skip the generated one.
+config:
+  # Use an externally managed Secret containing key config.yaml instead of
+  # the generated Secret below.
+  existingSecret: ""
+
+  server:
+    # Public origin of NereidSphere (used for product launch URLs and the
+    # registered OIDC redirect URI <baseUrl>/auth/callback).
+    baseUrl: "https://nereidsphere.example.com"
+
+  auth:
+    # "oidc" delegates login to the external NereidIdentity service via
+    # authorization-code + PKCE. "local" is the emergency break-glass mode
+    # using the static bcrypt accounts below.
+    mode: "oidc"
+    # Emergency local accounts, used only when mode=local. Passwords must be
+    # bcrypt hashes; generate with:
+    #   htpasswd -bnBC 10 "" password | tr -d ':\n'
+    #   - username: admin
+    #     name: Admin User
+    #     passwordBcrypt: "$2a$10$..."
+    #     roles: ["admin", "user"]
+    localUsers: []
+
+  # NereidIdentity connection block, used only when auth.mode=oidc. NS is a
+  # pure consumer: the browser is redirected to the NI login page and the
+  # admin console uses the service-account client below for Admin REST.
+  oidc:
+    issuer: "https://sso.example.com/auth/realms/nereidai"
+    clientId: "nereidsphere"
+    # CHANGE ME: nereidsphere confidential client secret.
+    clientSecret: "changeme"
+    adminClientId: "nereidsphere-admin"
+    # CHANGE ME: nereidsphere-admin service-account secret.
+    adminClientSecret: "changeme-admin"
+    # Optional name of a Secret in the release namespace containing key
+    # ca.crt. It is mounted into the container trust store when the issuer
+    # uses a cluster-internal CA (e.g. cert-manager internal-ca).
+    caBundleSecret: ""
+
+  session:
+    # CHANGE ME: exactly 32 bytes for AES-256.
+    secretKey: "change-me-32byte-session-secret!"
+    idleTtl: "8h"
+    absoluteTtl: "24h"
+    secure: true
+
+  gateway:
+    # Empty defaults the CORS allowlist to server + product origins.
+    corsAllowedOrigins: []
+    requestsPerMinute: 300
+    burst: 60
+    loginRequestsPerMinute: 10
+    loginBurst: 5
+    upstreamTimeout: "30s"
+
+  # Central-suite products in closed-loop pipeline order: Forge (model
+  # factory) -> Horizon (edge distribution) -> Link (device platform, last).
+  # NereidEdge runs independently at every edge site and is not a central
+  # portal entry.
+  # mode "ns": one-time NS handoff ticket; ssoSecret is the product-backend
+  # shared secret. mode "oidc": the product is a standalone NI OIDC client
+  # (no ticket, no ssoSecret required).
+  # tenantsPath is the product-relative API path that lists tenants for the
+  # admin console product-role picker; the console fetches it through the
+  # gateway at /p/{id}{tenantsPath}. Empty hides the tenant picker.
+  products:
+    - id: "forge"
+      name: "NereidForge"
+      description: "Model factory — train, optimize and export models across silicon"
+      url: "https://nereidforge.example.com"
+      mode: "ns"
+      oidcClientId: "nereidforge"
+      ssoSecret: "change-me-forge"
+      tenantsPath: "/v1/integration/ns/tenants"
+    - id: "horizon"
+      name: "NereidHorizon"
+      description: "Edge distribution — edge deployment, model rollout, delivery and OTA"
+      url: "https://nereidhorizon.example.com"
+      mode: "ns"
+      oidcClientId: "nereidhorizon"
+      ssoSecret: "change-me-horizon"
+      tenantsPath: "/v1/integration/ns/tenants"
+    - id: "link"
+      name: "NereidLink"
+      description: "IoT platform — device access, messaging, rules and alerts"
+      url: "https://nereidlink.example.com"
+      mode: "ns"
+      oidcClientId: "nereidlink"
+      ssoSecret: "change-me-link"
+      tenantsPath: "/v1/integration/ns/tenants"
+
+# NereidIdentity is an external, independently deployed dependency (its own
+# Helm release); configure it purely through config.oidc.*. NS sessions stay
+# in sealed cookies; the only shared runtime state is the 30-second ticket
+# JTI marker stored in Valkey.

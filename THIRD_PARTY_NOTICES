@@ -1,0 +1,138 @@
+Third-Party Notices for NereidSphere
+Copyright (C) 2026 YIQISOFT
+
+NereidSphere itself is licensed under the Apache License, Version 2.0 (see
+LICENSE). This file records third-party software and data that NereidSphere
+bundles, links, or uses to build its portal, together with their verified
+licenses. Inclusion of a project does not imply endorsement by that project.
+
+The dependency inventory was reviewed on 2026-11-11 with:
+
+    go-licenses report ./...
+    (cd web && npx license-checker --summary)
+    (cd web && npx license-checker --json)
+
+The package-lock.json metadata was also checked for every locked package,
+including optional packages not installed on the audit host. No dependency
+reported GPL, AGPL, SSPL, MPL, or EPL licensing.
+
+--------------------------------------------------------------------------
+1. Vendored components and data
+--------------------------------------------------------------------------
+
+Swagger UI 5.20.1 (docs/api/swaggerui/)
+    Apache License 2.0.
+    swagger-ui
+    Copyright 2020-2021 SmartBear Software Inc.
+    https://github.com/swagger-api/swagger-ui
+    The upstream LICENSE is preserved alongside the vendored assets.
+
+caniuse-lite 1.0.30001815 (build-time browser compatibility data)
+    Creative Commons Attribution 4.0 International (CC-BY-4.0).
+    caniuse-lite by Ben Briggs; browser support data from caniuse.com
+    contributors. https://github.com/browserslist/caniuse-lite
+    https://creativecommons.org/licenses/by/4.0/
+    The data is consulted by frontend build tooling and is not distributed as
+    a standalone dataset by NereidSphere.
+
+--------------------------------------------------------------------------
+2. Go modules
+--------------------------------------------------------------------------
+
+Direct dependencies declared in go.mod:
+
+github.com/coreos/go-oidc/v3 v3.11.0
+    Apache License 2.0.
+    CoreOS Project
+    Copyright 2014 CoreOS, Inc.
+    This product includes software developed at CoreOS, Inc.
+    https://github.com/coreos/go-oidc
+
+github.com/spf13/cobra v1.8.1
+    Apache License 2.0. Copyright the Cobra authors and contributors.
+    https://github.com/spf13/cobra
+
+golang.org/x/crypto v0.25.0
+    BSD 3-Clause License.
+    Copyright (c) 2009 The Go Authors. All rights reserved.
+    https://go.googlesource.com/crypto
+
+golang.org/x/oauth2 v0.24.0
+    BSD 3-Clause License.
+    Copyright (c) 2009 The Go Authors. All rights reserved.
+    https://go.googlesource.com/oauth2
+
+gopkg.in/yaml.v3 v3.0.1
+    MIT License for files ported from libyaml; Apache License 2.0 for the
+    remaining project files.
+    Copyright (c) 2006-2011 Kirill Simonov.
+    Copyright 2011-2016 Canonical Ltd.
+    Copyright (c) 2011-2019 Canonical Ltd.
+    https://github.com/go-yaml/yaml
+
+Transitive or platform-specific modules in the audited Go build/module graph:
+
+github.com/go-jose/go-jose/v4 v4.0.2
+    Apache License 2.0; its json package contains code under the BSD 3-Clause
+    License, Copyright (c) 2012 The Go Authors. All rights reserved.
+    https://github.com/go-jose/go-jose
+
+github.com/spf13/pflag v1.0.5
+    BSD 3-Clause License.
+    Copyright (c) 2012 Alex Ogier. All rights reserved.
+    Copyright (c) 2012 The Go Authors. All rights reserved.
+    https://github.com/spf13/pflag
+
+github.com/inconshreveable/mousetrap v1.1.0
+    Apache License 2.0. This platform-specific Cobra dependency is declared in
+    the module graph but is not compiled into the audited Linux binary.
+    https://github.com/inconshreveable/mousetrap
+
+The Go report identifies NereidSphere's own module as Apache-2.0. Its warning
+about an empty module version is expected for a local, untagged source tree;
+it is not an unknown third-party license.
+
+--------------------------------------------------------------------------
+3. Web portal npm packages
+--------------------------------------------------------------------------
+
+The final clean installed-tree audit enumerated 267 entries: 266 third-party
+packages and the private first-party root nereidsphere-portal@0.1.0. The root
+is reported as UNLICENSED because package.json does not declare a license
+field; it is not a third-party dependency and is governed by the repository
+LICENSE.
+
+The 266 installed third-party entries are grouped by their reported licenses:
+
+    MIT (256)
+        Direct runtime components include React, React DOM, Ant Design,
+        @ant-design/icons, axios, i18next,
+        i18next-browser-languagedetector, react-i18next, react-markdown,
+        react-router-dom, remark-gfm, and Zustand. Vite and the MIT-licensed
+        Babel, Rollup, unified/remark, Ant Design/rc-component, and other
+        transitive packages used by the frontend build are also in this
+        group.
+
+    ISC (6)
+        @ungap/structured-clone, electron-to-chromium, lru-cache, picocolors,
+        semver, and yallist.
+
+    Apache-2.0 (2)
+        TypeScript and baseline-browser-mapping.
+
+    BSD 3-Clause (1)
+        source-map-js, Copyright (c) 2009-2011 Mozilla Foundation and
+        contributors. All rights reserved.
+
+    CC-BY-4.0 (1)
+        caniuse-lite; see the attribution in section 1.
+
+The complete lockfile contains 314 package entries including the first-party
+root. Its metadata reports MIT (303), ISC (6), Apache-2.0 (2), BSD 3-Clause
+(1), and CC-BY-4.0 (1); the root has no license field. The difference from
+the installed-tree count is caused by platform-specific optional packages and
+other lock entries not installed on the audit host.
+
+License texts and package-specific copyright notices are available in the
+corresponding package distributions and upstream repositories. The exact
+versions are fixed by go.mod, go.sum, and web/package-lock.json.
