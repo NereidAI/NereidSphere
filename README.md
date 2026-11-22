@@ -162,14 +162,14 @@ Configuration is YAML only; select a file with the binary's `-c` flag.
 ## Container image & Helm
 
 Public images live at `ghcr.io/nereidai/nereidsphere:<version>` and charts at
-`oci://ghcr.io/nereidai/charts/nereidsphere`. The immutable Lab/POC chart below
-passed anonymous pull/render and image-manifest verification on 2026-11-22.
-Use a verified formal version instead when one is published; floating
-`0.0.0-dev` is not a reproducible installation input. The image is
-self-contained — the SPA is embedded in the binary.
+`oci://ghcr.io/nereidai/charts/nereidsphere`. The floating `0.0.0-dev` OCI tag
+aliases the latest successfully published immutable
+`0.0.0-dev-<short-sha>` chart manifest, whose `appVersion` selects the matching
+immutable image. Use a verified formal version instead when one is published.
+The image is self-contained — the SPA is embedded in the binary.
 
 ```bash
-export NEREIDSPHERE_VERSION=0.0.0-dev-90379cb
+export NEREIDSPHERE_VERSION=0.0.0-dev
 
 # Default: NereidIdentity via authorization-code + PKCE
 helm upgrade --install nereidsphere \
@@ -195,6 +195,10 @@ helm upgrade --install nereidsphere \
   --set 'config.auth.localUsers[0].username=admin' \
   --set 'config.auth.localUsers[0].passwordBcrypt=$2a$10$...'
 ```
+
+Record the OCI digest and resolved chart version for each deployment. For
+deliberate reproduction, replace `NEREIDSPHERE_VERSION` with the resolved
+`0.0.0-dev-<short-sha>` snapshot instead of the floating selector.
 
 The chart renders the runtime YAML into a Secret mounted at
 `/app/config/config.yaml`; use `config.existingSecret` to supply your own.
