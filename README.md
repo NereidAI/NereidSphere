@@ -208,10 +208,6 @@ the rolling `0.0.0-dev` channel.
 
 ```bash
 make helm-package   # lint + package dist/charts/nereidsphere-<version>.tgz
-# Optional air-gapped redistribution through an explicit ChartMuseum is an
-# operator action outside the Makefile (no push targets):
-# curl -f --data-binary @dist/charts/nereidsphere-<version>.tgz \
-#      <chartmuseum-url>/api/charts
 ```
 
 ## CI and image publication
@@ -222,8 +218,9 @@ local checkout, and warms the multi-arch image build cache with the
 `VERSION=0.0.0-dev` build argument.
 
 `.github/workflows/publish-dev.yml` runs on every push to `main` and
-publishes the rolling `0.0.0-dev` floating tag plus an immutable
-`0.0.0-dev-<sha>` tag; pull requests never publish.
+publishes the rolling `0.0.0-dev` floating image and chart plus immutable
+`0.0.0-dev-<sha>` artifacts; the commit-qualified chart selects the
+commit-qualified image. Pull requests never publish.
 
 `.github/workflows/release.yml` runs only when a `v*` tag is pushed. The
 organization workflow validates the SemVer shape of the tag, derives the bare

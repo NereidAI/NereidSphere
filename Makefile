@@ -149,18 +149,15 @@ helm-template: ## Render and validate the complete Helm chart
 compose-config: ## Validate the OIDC Compose environment with placeholder values
 	docker compose --env-file .env.example -f docker-compose.yaml config --quiet
 
-helm-package: helm-lint ## Package the chart for offline redistribution
+helm-package: helm-lint ## Package the chart with the tag-derived version
 	mkdir -p dist/charts
 	helm package $(CHART_DIR) \
 		--version $(VERSION) --app-version $(VERSION) \
 		-d dist/charts
 	@echo "packaged dist/charts/$(CHART_NAME)-$(VERSION).tgz"
 
-# Chart publication to a ChartMuseum is an operator action outside the
-# Makefile (no push targets). After `make helm-package`, upload manually with
-# the explicit site URL:
-#   curl -f --data-binary @dist/charts/<chart>-<version>.tgz \
-#        <chartmuseum-url>/api/charts
+# GitHub Actions publishes this package to the suite's GHCR OCI registry; the
+# Makefile deliberately provides no upload target.
 
 dev: ## Run NereidSphere with the local development config
 	go run ./cmd/sphere serve -c configs/dev.yaml

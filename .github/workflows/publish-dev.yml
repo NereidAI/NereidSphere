@@ -40,3 +40,13 @@ jobs:
       build-args: |
         GIT_SHA=${{ github.sha }}
         BUILD_DATE=${{ needs.prep.outputs.build_date }}
+
+  publish-dev-chart:
+    name: Publish dev Helm charts
+    needs: publish-dev-image
+    uses: NereidAI/.github/.github/workflows/publish-chart.yml@v1
+    with:
+      chart-path: deploy/helm
+      chart-name: nereidsphere
+      channel: development
+      set-values: valkey.auth.password=ci-render-only-placeholder
