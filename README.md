@@ -161,26 +161,33 @@ Configuration is YAML only; select a file with the binary's `-c` flag.
 
 ## Container image & Helm
 
-Released images live at
-`ghcr.io/nereidai/nereidsphere:<version>` with bare SemVer tags (`0.0.1`);
-every main-branch build additionally publishes the rolling `0.0.0-dev` tag.
-The image is self-contained — the SPA is embedded in the binary. The Dockerfile
-builds web assets and the binary in one stage and ships a small Alpine 3.24.4
-runtime image. Override the registry with `REGISTRY=... make image` for a
-local or internal build.
+Public images live at `ghcr.io/nereidai/nereidsphere:<version>` and charts at
+`oci://ghcr.io/nereidai/charts/nereidsphere`. The immutable Lab/POC chart below
+passed anonymous pull/render and image-manifest verification on 2026-11-22.
+Use a verified formal version instead when one is published; floating
+`0.0.0-dev` is not a reproducible installation input. The image is
+self-contained — the SPA is embedded in the binary.
 
 ```bash
+export NEREIDSPHERE_VERSION=0.0.0-dev-90379cb
+
 # Default: NereidIdentity via authorization-code + PKCE
-helm install nereidsphere deploy/helm -n nereidsphere --create-namespace \
-  --set config.server.baseUrl=https://nereidsphere.example.com \
-  --set config.oidc.issuer=https://sso.example.com/auth/realms/nereidai \
-  --set config.oidc.clientSecret=<nereidsphere-client-secret> \
-  --set config.oidc.adminClientSecret=<nereidsphere-admin-sa-secret> \
-  --set config.session.secretKey=<exactly-32-bytes> \
-  --set valkey.auth.password=<strong-valkey-password>
+helm upgrade --install nereidsphere \
+  oci://ghcr.io/nereidai/charts/nereidsphere \
+  --version "$NEREIDSPHERE_VERSION" \
+  -n nereidsphere --create-namespace \
+  --set config.server.baseUrl=https://nereidsphere.example.org \
+  --set config.oidc.issuer=https://sso.example.org/auth/realms/nereidai \
+  --set config.oidc.clientSecret="<nereidsphere-client-secret>" \
+  --set config.oidc.adminClientSecret="<nereidsphere-admin-sa-secret>" \
+  --set config.session.secretKey="<exactly-32-bytes>" \
+  --set valkey.auth.password="<strong-valkey-password>"
 
 # Emergency mode: local bcrypt accounts instead of the identity plane
-helm install nereidsphere deploy/helm -n nereidsphere --create-namespace \
+helm upgrade --install nereidsphere \
+  oci://ghcr.io/nereidai/charts/nereidsphere \
+  --version "$NEREIDSPHERE_VERSION" \
+  -n nereidsphere --create-namespace \
   --set replicaCount=1 \
   --set valkey.enabled=false \
   --set tickets.replayStore=memory \
