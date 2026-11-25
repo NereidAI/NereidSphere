@@ -28,12 +28,26 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Split the heavy, rarely-changing vendor bundles so the app code
-        // stays a small, cacheable chunk.
-        manualChunks: {
-          react: ['react', 'react-dom', 'react-router-dom'],
-          antd: ['antd', '@ant-design/icons'],
-          markdown: ['react-markdown', 'remark-gfm'],
-          i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+        // stays a small, cacheable chunk. Vite 8/Rolldown requires this hook
+        // to be a function rather than the previous object form.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+          if (/[\\/]node_modules[\\/](?:react|react-dom|react-router-dom)[\\/]/.test(id)) {
+            return 'react'
+          }
+          if (/[\\/]node_modules[\\/](?:antd|@ant-design[\\/]icons)[\\/]/.test(id)) {
+            return 'antd'
+          }
+          if (/[\\/]node_modules[\\/](?:react-markdown|remark-gfm)[\\/]/.test(id)) {
+            return 'markdown'
+          }
+          if (
+            /[\\/]node_modules[\\/](?:i18next|react-i18next|i18next-browser-languagedetector)[\\/]/.test(id)
+          ) {
+            return 'i18n'
+          }
         },
       },
     },
