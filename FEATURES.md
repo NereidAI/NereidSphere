@@ -104,8 +104,9 @@ in the same change that delivers a feature.
 ## Portal / frontend
 
 - React 18 + antd 5 + Vite SPA, embedded via `embed.FS` with history
-  fallback; bilingual (English/中文) i18n with key-parity checks and a
-  suite-branded SVG browser favicon.
+  fallback, startup validation of `index.html` and referenced hashed assets,
+  no dotfile exposure, and no directory autoindex; bilingual (English/中文)
+  i18n with key-parity checks and a suite-branded SVG browser favicon.
 - Product catalogue ordered along the closed-loop pipeline:
   **Forge → Horizon → Link** (NereidEdge is deployed per edge site and is
   not a central portal entry); launch URL always `/auth/enter/{id}` and opens

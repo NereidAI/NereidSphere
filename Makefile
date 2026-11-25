@@ -9,7 +9,7 @@ SHELL := /bin/bash
 # means a pristine direct-internet build, as used by CI.
 -include local.mk
 
-.PHONY: help build build-local clean test test-cover vet lint fmt verify \
+.PHONY: help build build-local check-spa-build clean test test-cover vet lint fmt verify \
 	web-install web-dev web-build web-typecheck web-check image \
 	helm-dep helm-lint helm-template helm-package compose-config dev
 
@@ -57,11 +57,15 @@ help: ## List available targets
 	@awk 'BEGIN {FS = ":.*## "; printf "Available targets:\n"} \
 	/^[a-zA-Z0-9_-]+:.*## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: web-build ## Build the linux binary with embedded web assets
+build: web-build check-spa-build ## Build the linux binary with embedded web assets
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o bin/$(BINARY) ./cmd/sphere
 
-build-local: web-build ## Build a binary for the current platform
+build-local: web-build check-spa-build ## Build a binary for the current platform
 	CGO_ENABLED=0 go build $(LDFLAGS) -o bin/$(BINARY) ./cmd/sphere
+
+check-spa-build: ## Fail before Go compilation when the SPA build is empty or partial
+	@test -f web/dist/index.html || { echo "web/dist/index.html missing; run make web-build"; exit 1; }
+	@test "$$(find web/dist/assets -type f 2>/dev/null | wc -l)" -gt 0 || { echo "web/dist/assets has no built files; run make web-build"; exit 1; }
 
 clean: ## Remove local build and packaging output
 	rm -rf bin/ dist/ coverage.out coverage.html
