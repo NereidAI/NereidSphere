@@ -23,7 +23,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // The complete SPA is embedded in the public binary. Do not publish
+    // browser-readable source maps through that embedded filesystem.
+    sourcemap: false,
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {

@@ -418,3 +418,28 @@ rewrite history casually.
   A service-wide `read_only` setting requires a pre-rendered `configs[].file`
   instead.
 - **Files:** `docker-compose.yaml`, `Makefile` (`compose-config`).
+
+## 27. A placeholder-only SPA embed can become a public directory listing
+
+- **Symptom:** a browser navigation to an extension-less SPA route returns an
+  HTML directory listing whose only entry is `.gitkeep`, instead of the React
+  application. Exact requests such as `/.gitkeep` and `/assets/` may also
+  succeed, and a production build can expose source maps through the embedded
+  static filesystem.
+- **Root cause:** `web/dist/.gitkeep` keeps the embed path valid in a fresh
+  checkout. Using `//go:embed all:dist` includes that dotfile, while delegating
+  unknown extension-less routes to `http.FileServerFS` lets the standard file
+  server emit an automatic directory index when `index.html` was not built.
+  The Go compiler accepts the placeholder-only tree, so the defect reaches
+  runtime unless the build or startup path validates the SPA contents.
+- **Permanent rule:** keep the embed compilable on a fresh checkout, but
+  reject hidden paths and directory requests in the SPA handler and serve
+  regular files explicitly rather than relying on automatic indexes. Validate
+  `index.html` and every local asset it references, make the production
+  Makefile fail before Go compilation when the Vite output is empty or
+  partial, and let a bare development checkout return 404 for browser routes
+  while keeping the API available. Do not generate browser-readable source
+  maps for the embedded public binary.
+- **Files:** `web/assets.go`, `internal/portal/portal.go`,
+  `internal/portal/spa_test.go`, `web/assets_test.go`, `Makefile`,
+  `web/vite.config.ts`.

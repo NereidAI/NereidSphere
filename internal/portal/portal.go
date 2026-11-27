@@ -7,7 +7,9 @@
 package portal
 
 import (
+	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
@@ -91,45 +93,107 @@ func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 // SPAHandler serves the embedded single-page application with history-mode
-// fallback, mirroring NereidLink: existing files are served directly,
-// extension-less unknown paths fall back to index.html, and missing static
-// assets return a real 404.
+// fallback. Existing regular files are served directly, extension-less
+// unknown paths fall back to index.html, missing static assets return a real
+// 404, and dotfiles/directories are never exposed through automatic indexes.
 func SPAHandler() http.Handler {
 	assets, err := webassets.DistFS()
 	if err != nil {
-		// Only reachable if the embedded layout changes, which is a build
-		// defect rather than a client error.
-		panic("embedded web assets unavailable: " + err.Error())
+		// Supported production builds run `make build`, which fails before Go
+		// compilation when the SPA output is empty or partial. A bare `go run`
+		// development checkout may have the placeholder only; keep the API
+		// running and return a safe 404 instead of exposing an autoindex.
+		slog.Error("embedded SPA unavailable; serving 404 for browser routes", "error", err)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		})
 	}
-	fileServer := http.FileServerFS(assets)
+	return spaHandler(assets)
+}
 
+func spaHandler(assets fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			w.WriteHeader(http.StatusMethodNotAllowed)
+		serveSPA(w, r, assets)
+	})
+}
+
+func serveSPA(w http.ResponseWriter, r *http.Request, assets fs.FS) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Normalize to prevent traversal via segments such as "/../".
+	clean := path.Clean(r.URL.Path)
+	if !strings.HasPrefix(clean, "/") {
+		clean = "/" + clean
+	}
+	if clean == "/" {
+		serveSPAFile(w, r, assets, "index.html")
+		return
+	}
+
+	relative := strings.TrimPrefix(clean, "/")
+	if isHiddenSPAPath(relative) {
+		http.NotFound(w, r)
+		return
+	}
+
+	info, err := fs.Stat(assets, relative)
+	if err == nil {
+		if info.IsDir() {
+			// Never use net/http's automatic directory index. Vite assets are
+			// addressed as explicit files, while client routes fall through
+			// to index.html below.
+			http.NotFound(w, r)
 			return
 		}
+		serveSPAFile(w, r, assets, relative)
+		return
+	}
 
-		// Normalize to prevent traversal via segments such as "/../".
-		clean := path.Clean(r.URL.Path)
-		if !strings.HasPrefix(clean, "/") {
-			clean = "/" + clean
+	if path.Ext(relative) != "" {
+		// Missing fingerprinted or other concrete static file: never
+		// masquerade it as the HTML shell.
+		http.NotFound(w, r)
+		return
+	}
+
+	// Client-side history route.
+	serveSPAFile(w, r, assets, "index.html")
+}
+
+func serveSPAFile(w http.ResponseWriter, r *http.Request, assets fs.FS, name string) {
+	if isHiddenSPAPath(name) {
+		http.NotFound(w, r)
+		return
+	}
+
+	file, err := assets.Open(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	seeker, ok := file.(io.ReadSeeker)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeContent(w, r, info.Name(), info.ModTime(), seeker)
+}
+
+func isHiddenSPAPath(relativePath string) bool {
+	for _, segment := range strings.Split(relativePath, "/") {
+		if segment == "" || segment == "." || segment == ".." || strings.HasPrefix(segment, ".") {
+			return true
 		}
-
-		relative := strings.TrimPrefix(clean, "/")
-		if relative == "" {
-			relative = "index.html"
-		}
-
-		if _, err := fs.Stat(assets, relative); err != nil {
-			if path.Ext(relative) != "" {
-				// Missing fingerprinted asset: never masquerade as HTML.
-				http.NotFound(w, r)
-				return
-			}
-			// Client-side route: serve index.html for the React router.
-			r.URL.Path = "/"
-		}
-
-		fileServer.ServeHTTP(w, r)
-	})
+	}
+	return false
 }
