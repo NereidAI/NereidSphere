@@ -162,11 +162,14 @@ Configuration is YAML only; select a file with the binary's `-c` flag.
 ## Container image & Helm
 
 Public images live at `ghcr.io/nereidai/nereidsphere:<version>` and charts at
-`oci://ghcr.io/nereidai/charts/nereidsphere`. The floating `0.0.0-dev` OCI tag
-aliases the latest successfully published immutable
-`0.0.0-dev-<short-sha>` chart manifest, whose `appVersion` selects the matching
-immutable image. Use a verified formal version instead when one is published.
-The image is self-contained — the SPA is embedded in the binary.
+`oci://ghcr.io/nereidai/charts/nereidsphere`. `0.0.0-dev` is the single
+rolling development identity for both the chart and its image: each
+main-branch publication moves the tag to the new verified manifest, and the
+chart selects the floating `0.0.0-dev` image. Earlier
+`0.0.0-dev-<short-sha>` chart tags remain for reproducing historical
+snapshots, but new development builds no longer create per-commit chart
+tags. Use a verified formal version instead when one is published. The image
+is self-contained — the SPA is embedded in the binary.
 
 ```bash
 export NEREIDSPHERE_VERSION=0.0.0-dev
@@ -196,9 +199,11 @@ helm upgrade --install nereidsphere \
   --set 'config.auth.localUsers[0].passwordBcrypt=$2a$10$...'
 ```
 
-Record the OCI digest and resolved chart version for each deployment. For
-deliberate reproduction, replace `NEREIDSPHERE_VERSION` with the resolved
-`0.0.0-dev-<short-sha>` snapshot instead of the floating selector.
+Record the OCI digest and resolved chart version for each deployment;
+pinning that digest reproduces a given floating-tag snapshot even after the
+tag moves. For historical builds, replace `NEREIDSPHERE_VERSION` with one of
+the retained `0.0.0-dev-<short-sha>` snapshots instead of the floating
+selector.
 
 The chart renders the runtime YAML into a Secret mounted at
 `/app/config/config.yaml`; use `config.existingSecret` to supply your own.
@@ -229,9 +234,9 @@ local checkout, and warms the multi-arch image build cache with the
 `VERSION=0.0.0-dev` build argument.
 
 `.github/workflows/publish-dev.yml` runs on every push to `main` and
-publishes the rolling `0.0.0-dev` floating image and chart plus immutable
-`0.0.0-dev-<sha>` artifacts; the commit-qualified chart selects the
-commit-qualified image. Pull requests never publish.
+publishes the rolling `0.0.0-dev` image (with its per-commit traceability
+tag) and the single floating `0.0.0-dev` chart, which selects the floating
+image. Pull requests never publish.
 
 `.github/workflows/release.yml` runs only when a `v*` tag is pushed. The
 organization workflow validates the SemVer shape of the tag, derives the bare
